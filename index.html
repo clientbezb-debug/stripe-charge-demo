@@ -84,7 +84,11 @@
           show('Payment failed: '+confirm.error.message);
           await saveLead({email,status:'failed',amount,reason:confirm.error.message,ref});
         } else if(confirm.paymentIntent && confirm.paymentIntent.status==='succeeded'){
-          show('Payment succeeded!\nLink with ref: ' + data.link);
+output.style.display = 'block';
+outputText.innerHTML = `
+  Payment succeeded!<br>
+  <a href="${data.link}" target="_blank">Go to confirmation link</a>
+`;
           await saveLead({email,status:'succeeded',amount,pi:confirm.paymentIntent.id,ref});
         } else {
           show('Payment status: '+confirm.paymentIntent.status);
