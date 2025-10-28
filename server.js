@@ -14,9 +14,7 @@ const CSV_FILE = path.join(__dirname, 'leads.csv');
 
 // Check Stripe key at startup
 if (!process.env.STRIPE_SECRET_KEY) {
-  console.error('Error: STRIPE_SECRET_KEY not set');
-  process.exit(1);
-}
+  console.error('STRIPE_SECRET_KEY not found. Env keys:', Object.keys(process.env));
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
