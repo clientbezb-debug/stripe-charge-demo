@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stripe Charge + Save Lead (CSV)</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px}
+    .card{max-width:720px;margin:0 auto;padding:18px;border:1px solid #eee;border-radius:8px}
+    label{display:block;margin-top:12px}
+    #card-element{padding:12px;border:1px solid #ddd;border-radius:6px}
+    button{margin-top:18px;padding:10px 14px;border:none;border-radius:6px;background:#3b82f6;color:white}
+    .result{margin-top:16px;padding:12px;border-radius:6px;background:#f3f4f6}
+    pre{white-space:pre-wrap;word-break:break-word}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Charge with Stripe (CSV leads)</h2>
+
+    <label>Email</label>
+    <input id="email" type="email" placeholder="customer@example.com" required />
+
+    <label>Amount (USD)</label>
+    <input id="amount" type="number" value="5.00" step="0.01" min="0.5" required />
+
+    <label>Card details</label>
+    <div id="card-element"></div>
+
+    <button id="pay">Pay</button>
+
+    <div id="output" class="result" style="display:none"><pre id="outputText"></pre></div>
+  </div>
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51OXZ8eAgvGCDO41Zv2jyk5tVWZWyB2XUigy8WF8iMWCOlzIMvWh3uCHVtbLuVCBkesWCx6TbIOuatQXaBTAihGpl008VgQVuyo';
+    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+    const elements = stripe.elements();
+    const card = elements.create('card');
+    card.mount('#card-element');
+
+    const output = document.getElementById('output');
+    const outputText = document.getElementById('outputText');
+    const show = msg => { output.style.display='block'; outputText.textContent = typeof msg==='string'?msg:JSON.stringify(msg,null,2); };
+
+    document.getElementById('pay').addEventListener('click', async e=>{
+      e.preventDefault();
+      const email=document.getElementById('email').value;
+      const amount=parseFloat(document.getElementById('amount').value)*100;
+      if(!email||amount<=0){show('Please provide a valid email and amount.');return;}
+      show('Creating payment intent...');
+      try{
+        const res=await fetch('/create-payment-intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,currency:'usd',email})});
+        const data=await res.json();
+        if(!data.clientSecret) throw new Error(data.error||'No client secret');
+        const confirm=await stripe.confirmCardPayment(data.clientSecret,{payment_method:{card}});
+        if(confirm.error){show('Payment failed: '+confirm.error.message);await saveLead({email,status:'failed',amount,reason:confirm.error.message});}
+        else if(confirm.paymentIntent&&confirm.paymentIntent.status==='succeeded'){
+          show('Payment succeeded!');
+          await saveLead({email,status:'succeeded',amount,pi:confirm.paymentIntent.id});
+        } else show('Payment status: '+confirm.paymentIntent.status);
+      }catch(err){show('Error: '+err.message);}
+    });
+
+    async function saveLead(lead){
+      await fetch('/save-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lead)});
+    }
+  </script>
+</body>
+</html>
