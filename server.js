@@ -90,3 +90,5 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+app.get('/debug-env', (req, res) => {
+  res.json({ stripeKeySet: !!process.env.STRIPE_SECRET_KEY });
