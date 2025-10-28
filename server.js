@@ -1,3 +1,4 @@
+// Load environment variables
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -5,65 +6,65 @@ const Stripe = require('stripe');
 const fs = require('fs').promises;
 const path = require('path');
 
+// Initialize app
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Config
 const PORT = process.env.PORT || 4242;
 const CSV_FILE = path.join(__dirname, 'leads.csv');
 
-// Check Stripe key at startup
+// Check for Stripe key
 if (!process.env.STRIPE_SECRET_KEY) {
-  console.error('STRIPE_SECRET_KEY not found. Env keys:', Object.keys(process.env));
+  console.error('❌ Error: STRIPE_SECRET_KEY not set');
+  process.exit(1);
+}
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Helper: escape CSV fields
+// Helper: safely escape CSV fields
 function escapeCSVField(field) {
-  if (!field) return '';
+  if (field === undefined || field === null) return '';
   const str = String(field);
-  return `"${str.replace(/"/g, '""')}"`; // double quotes inside field
+  return `"${str.replace(/"/g, '""')}"`; // escape double quotes
 }
 
-// Endpoint: create payment intent
+// ✅ Create Payment Intent
 app.post('/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency, email } = req.body;
 
-    if (!amount || typeof amount !== 'number' || amount <= 0) {
+    // Validate inputs
+    if (!amount || typeof amount !== 'number' || amount <= 0)
       return res.status(400).json({ error: 'Invalid amount' });
-    }
-
-    if (!currency || typeof currency !== 'string') {
+    if (!currency || typeof currency !== 'string')
       return res.status(400).json({ error: 'Invalid currency' });
-    }
-
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
+    if (!email || typeof email !== 'string' || !email.includes('@'))
       return res.status(400).json({ error: 'Invalid email' });
-    }
 
-    const pi = await stripe.paymentIntents.create({
+    // Create payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,
       receipt_email: email,
       automatic_payment_methods: { enabled: true },
     });
 
-    res.json({ clientSecret: pi.client_secret });
+    res.json({ clientSecret: paymentIntent.client_secret });
   } catch (err) {
     console.error('Payment Intent Error:', err.message);
     res.status(500).json({ error: 'Unable to create payment intent' });
   }
 });
 
-// Endpoint: save lead to CSV
+// ✅ Save Lead to CSV
 app.post('/save-lead', async (req, res) => {
   try {
     const { email, status, amount, pi, reason } = req.body;
 
-    if (!email || !status) {
+    if (!email || !status)
       return res.status(400).json({ error: 'Missing required fields' });
-    }
 
     const line = [
       new Date().toISOString(),
@@ -82,7 +83,10 @@ app.post('/save-lead', async (req, res) => {
   }
 });
 
-// Serve static files from 'public' folder only
+// ✅ Serve static files from /public
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ✅ Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
