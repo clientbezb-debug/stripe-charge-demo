@@ -1,157 +1,138 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Stripe Charge + Save Lead (CSV)</title>
-  <style>
-    body{
-      font-family: Arial, "Segoe UI", Roboto, sans-serif;
-      margin:20px;
-      background:#f9f9f9;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subscription Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb', // Blue 600
+            accent: '#1d4ed8', // Blue 700
+          }
+        }
+      }
     }
-    .card{
-      max-width:600px;
-      margin:0 auto;
-      padding:20px;
-      border:1px solid #ddd;
-      border-radius:8px;
-      background:white;
-      box-shadow:0 2px 6px rgba(0,0,0,0.05);
-    }
-    h2{margin-top:0; font-size:1.5em; color:#111;}
-    label{display:block;margin-top:12px;font-weight:600;font-size:0.95em;}
-    input, select{width:100%;padding:8px;margin-top:4px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;font-size:0.95em;}
-    #card-element{padding:12px;border:1px solid #ccc;border-radius:6px;margin-top:4px;}
-    button{
-      margin-top:18px;
-      padding:10px 14px;
-      border:none;
-      border-radius:6px;
-      background:#0052cc;
-      color:white;
-      font-size:1em;
-      cursor:pointer;
-    }
-    button:hover{background:#003d99;}
-    .result{
-      margin-top:16px;
-      padding:12px;
-      border-radius:6px;
-      background:#eef2f7;
-      font-size:0.95em;
-    }
-    a{color:#0052cc;text-decoration:none;}
-    a:hover{text-decoration:underline;}
-  </style>
+  </script>
 </head>
-<body>
-  <div class="card">
-    <h2>Stripe Payment + CSV Leads</h2>
 
-    <label>Email (optional)</label>
-    <input id="email" type="email" placeholder="customer@example.com" />
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg transition-all duration-300">
+    <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">
+      💳 Create a Subscription
+    </h1>
 
-    <label>Reference (optional)</label>
-    <input id="ref" type="text" placeholder="Order/Ref ID" />
+    <div class="space-y-5">
+      <!-- Email -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Customer Email</label>
+        <input id="email" type="email" placeholder="customer@example.com"
+          class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition"/>
+      </div>
 
-    <label>Currency</label>
-    <select id="currency">
-      <option value="gbp" selected>GBP (£)</option>
-      <option value="usd">USD ($)</option>
-      <option value="eur">EUR (€)</option>
-    </select>
+      <!-- Payment Method -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Payment Type</label>
+        <select id="paymentType"
+          class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+          <option value="card">💳 Credit / Debit Card</option>
+          <option value="us_bank_account">🏦 Bank Account (ACH)</option>
+        </select>
+      </div>
 
-    <label id="amount-label">Amount (GBP £)</label>
-    <input id="amount" type="number" value="5.00" step="0.01" min="0.5" />
+      <!-- Plan Selection -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Select Plan</label>
+        <div class="grid grid-cols-2 gap-3">
+          <button class="plan-btn border rounded-lg p-3 hover:bg-blue-50 transition" data-price="price_monthly">
+            <p class="font-semibold text-gray-800">Monthly</p>
+            <p class="text-sm text-gray-500">$10 / month</p>
+          </button>
+          <button class="plan-btn border rounded-lg p-3 hover:bg-blue-50 transition" data-price="price_yearly">
+            <p class="font-semibold text-gray-800">Annual</p>
+            <p class="text-sm text-gray-500">$100 / year</p>
+          </button>
+        </div>
+        <input type="hidden" id="priceId" />
+      </div>
 
-    <label>Card details</label>
-    <div id="card-element"></div>
+      <!-- Button -->
+      <button id="subscribeBtn"
+        class="w-full bg-primary hover:bg-accent text-white rounded-lg p-3 font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+        <span id="btnText">Create Subscription</span>
+        <svg id="loadingIcon" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+      </button>
 
-    <button id="pay">Pay</button>
-
-    <div id="output" class="result" style="display:none"></div>
+      <!-- Result / Feedback -->
+      <div id="result" class="text-center text-sm mt-4"></div>
+    </div>
   </div>
 
-  <script src="https://js.stripe.com/v3/"></script>
   <script>
-    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51OXZ8eAgvGCDO41Zv2jyk5tVWZWyB2XUigy8WF8iMWCOlzIMvWh3uCHVtbLuVCBkesWCx6TbIOuatQXaBTAihGpl008VgQVuyo';
-    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
-    const elements = stripe.elements();
-    const card = elements.create('card');
-    card.mount('#card-element');
+    const priceInput = document.getElementById("priceId");
+    const planButtons = document.querySelectorAll(".plan-btn");
+    const subscribeBtn = document.getElementById("subscribeBtn");
+    const result = document.getElementById("result");
+    const loadingIcon = document.getElementById("loadingIcon");
+    const btnText = document.getElementById("btnText");
 
-    const output = document.getElementById('output');
-    const show = msg => { 
-      output.style.display='block'; 
-      output.innerHTML = typeof msg==='string'?msg:JSON.stringify(msg,null,2); 
-    };
-
-    const currencySelect = document.getElementById('currency');
-    const amountLabel = document.getElementById('amount-label');
-    const symbols = { usd: '$', gbp: '£', eur: '€' };
-
-    // Update amount label when currency changes
-    currencySelect.addEventListener('change', () => {
-      const cur = currencySelect.value;
-      const symbol = symbols[cur] || '';
-      amountLabel.textContent = `Amount (${cur.toUpperCase()} ${symbol})`;
+    // Handle plan selection
+    planButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        planButtons.forEach(b => b.classList.remove("ring-2", "ring-primary", "bg-blue-50"));
+        btn.classList.add("ring-2", "ring-primary", "bg-blue-50");
+        priceInput.value = btn.dataset.price;
+      });
     });
 
-    // Auto-fill ref from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const refFromUrl = urlParams.get('ref');
-    if(refFromUrl){
-      document.getElementById('ref').value = refFromUrl;
-    }
+    // Handle subscription creation
+    subscribeBtn.addEventListener("click", async () => {
+      const email = document.getElementById("email").value.trim();
+      const paymentType = document.getElementById("paymentType").value;
+      const priceId = priceInput.value;
 
-    document.getElementById('pay').addEventListener('click', async e => {
-      e.preventDefault();
-      const email = document.getElementById('email').value || undefined;
-      const ref = document.getElementById('ref').value || undefined;
-      const currency = currencySelect.value;
-      const amount = parseFloat(document.getElementById('amount').value) * 100;
+      result.innerHTML = "";
+      if (!email || !priceId) {
+        result.innerHTML = `<p class="text-red-600">⚠️ Please enter email and select a plan.</p>`;
+        return;
+      }
 
-      if(amount <= 0){ show('Please provide a valid amount.'); return; }
-
-      show('Creating payment intent...');
+      subscribeBtn.disabled = true;
+      loadingIcon.classList.remove("hidden");
+      btnText.textContent = "Processing...";
 
       try {
-        const res = await fetch('/create-payment-intent', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({amount, currency, email, ref})
+        const res = await fetch("/create-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, priceId, paymentMethodType: paymentType }),
         });
-        const data = await res.json();
-        if(!data.clientSecret) throw new Error(data.error||'No client secret');
 
-        const confirm = await stripe.confirmCardPayment(data.clientSecret, {payment_method:{card}});
-        
-        if(confirm.error){
-          show(`Payment failed: ${confirm.error.message}`);
-          await saveLead({email,status:'failed',amount,reason:confirm.error.message,ref});
-        } else if(confirm.paymentIntent && confirm.paymentIntent.status==='succeeded'){
-          output.style.display='block';
-          output.innerHTML = `
-            Payment succeeded!<br>
-            <a href="${data.link}" target="_blank">Go to confirmation link</a>
-          `;
-          await saveLead({email,status:'succeeded',amount,pi:confirm.paymentIntent.id,ref});
+        const data = await res.json();
+        if (data.error) {
+          result.innerHTML = `<p class="text-red-600">❌ ${data.error}</p>`;
         } else {
-          show('Payment status: '+confirm.paymentIntent.status);
+          result.innerHTML = `
+            <p class="text-green-600 font-semibold">✅ Subscription Created!</p>
+            <p><b>ID:</b> ${data.subscriptionId}</p>
+            <p><b>Status:</b> ${data.status}</p>
+          `;
         }
-      } catch(err){
-        show('Error: '+err.message);
+      } catch (err) {
+        console.error(err);
+        result.innerHTML = `<p class="text-red-600">⚠️ Network or server error.</p>`;
+      } finally {
+        subscribeBtn.disabled = false;
+        loadingIcon.classList.add("hidden");
+        btnText.textContent = "Create Subscription";
       }
     });
-
-    async function saveLead(lead){
-      await fetch('/save-lead', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(lead)
-      });
-    }
   </script>
 </body>
 </html>
