@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -10,6 +11,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// 🔐 Load Stripe key from environment variable
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecret) {
   console.error('❌ Error: STRIPE_SECRET_KEY not set');
@@ -20,21 +22,21 @@ const stripe = Stripe(stripeSecret);
 const PORT = process.env.PORT || 4242;
 const CSV_FILE = path.join(__dirname, 'leads.csv');
 
-
-// 💳 ONE-TIME PAYMENT INTENT
+/* ==========================================================
+   💳  ONE-TIME PAYMENT
+   Creates a single charge using Payment Intents API
+   ========================================================== */
 app.post('/create-payment-intent', async (req, res) => {
   try {
     let { amount, currency, email, ref } = req.body;
 
-    if (!amount || amount <= 0) {
+    if (!amount || amount <= 0)
       return res.status(400).json({ error: 'Invalid amount' });
-    }
 
     currency = currency ? currency.toLowerCase() : 'usd';
     const allowedCurrencies = ['usd', 'gbp', 'eur'];
-    if (!allowedCurrencies.includes(currency)) {
+    if (!allowedCurrencies.includes(currency))
       return res.status(400).json({ error: 'Invalid currency. Use USD, GBP, or EUR.' });
-    }
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
@@ -44,41 +46,53 @@ app.post('/create-payment-intent', async (req, res) => {
       metadata: { ref: ref || '' },
     });
 
-    const successLink = `https://your-frontend.com/confirmation?ref=${encodeURIComponent(ref || '')}`;
-
     res.json({
       clientSecret: paymentIntent.client_secret,
       ref: ref || null,
       currency: currency.toUpperCase(),
-      link: successLink,
-      status: paymentIntent.status
+      status: paymentIntent.status,
     });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Payment error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// 🔁 SUBSCRIPTION CREATION
+/* ==========================================================
+   🔁  SUBSCRIPTION PAYMENT
+   Creates a recurring charge using Subscriptions API
+   ========================================================== */
 app.post('/create-subscription', async (req, res) => {
   try {
-    const { email, priceId, paymentMethodType, ref } = req.body;
+    const { amount, currency, email, ref, paymentMethodType, interval } = req.body;
 
-    if (!priceId) {
-      return res.status(400).json({ error: 'Missing price ID' });
+    if (!amount || amount <= 0)
+      return res.status(400).json({ error: 'Invalid amount' });
+
+    const safeCurrency = (currency || 'usd').toLowerCase();
+
+    // ✅ Reuse or create customer
+    let customer;
+    if (email) {
+      const existing = await stripe.customers.list({ email, limit: 1 });
+      customer = existing.data.length ? existing.data[0] : await stripe.customers.create({ email });
+    } else {
+      customer = await stripe.customers.create();
     }
 
-    // 1️⃣ Create or reuse customer (email optional)
-    const customer = await stripe.customers.create({
-      ...(email ? { email } : {}),
-      description: 'Auto-created customer',
-    });
-
-    // 2️⃣ Create subscription
+    // ✅ Create subscription with dynamic pricing
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
-      items: [{ price: priceId }],
+      items: [
+        {
+          price_data: {
+            currency: safeCurrency,
+            product_data: { name: `Custom Plan (${ref || 'manual'})` },
+            unit_amount: amount,
+            recurring: { interval: interval || 'month' },
+          },
+        },
+      ],
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],
@@ -95,39 +109,41 @@ app.post('/create-subscription', async (req, res) => {
       ref: ref || null,
     });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Subscription error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// 🧾 LOG TO CSV
+/* ==========================================================
+   🧾  SAVE LEAD DATA TO CSV
+   ========================================================== */
 app.post('/save-lead', async (req, res) => {
   try {
     const { email, status, amount, pi, reason, ref } = req.body;
-
     const line = `${new Date().toISOString()},${email || ''},${status || ''},${amount || ''},${pi || ''},${reason || ''},${ref || ''}\n`;
     fs.appendFileSync(CSV_FILE, line);
-
     res.json({ ok: true });
   } catch (err) {
-    console.error(err);
+    console.error('❌ CSV error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// 🧠 DEBUG ROUTE
+/* ==========================================================
+   🧠  DEBUG ROUTE
+   ========================================================== */
 app.get('/debug-env', (req, res) => {
   res.json({ stripeKeySet: !!process.env.STRIPE_SECRET_KEY });
 });
 
-
-// STATIC FRONTEND
+/* ==========================================================
+   🌐  STATIC FRONTEND
+   ========================================================== */
 app.use(express.static(__dirname));
 
-
-// 🚀 START SERVER
+/* ==========================================================
+   🚀  START SERVER
+   ========================================================== */
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
